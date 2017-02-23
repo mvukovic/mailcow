@@ -12,19 +12,20 @@ rspamd_config.MAILCOW_MOO = function (task)
 end
 
 local modify_subject_map = rspamd_config:add_map({
-  url = 'http://nginx:8081/tags.php',
+  url = 'http://172.22.1.251:8081/tags.php',
   type = 'map',
   description = 'Map of users to use subject tags for'
 })
 
 local auth_domain_map = rspamd_config:add_map({
-  url = 'http://nginx:8081/authoritative.php',
+  url = 'http://172.22.1.251:8081/authoritative.php',
   type = 'map',
   description = 'Map of domains we are authoritative for'
 })
 
 rspamd_config.ADD_DELIMITER_TAG = {
   callback = function(task)
+	tag = nil
     local util = require("rspamd_util")
     local rspamd_logger = require "rspamd_logger"
 
@@ -71,5 +72,41 @@ rspamd_config.ADD_DELIMITER_TAG = {
       rspamd_logger.infox("Skip delimiter handling for untagged message or authenticated user")
     end
     return false
+  end
+}
+
+rspamd_config.MRAPTOR = {
+  callback = function(task)
+    local parts = task:get_parts()
+    local rspamd_logger = require "rspamd_logger"
+    local rspamd_regexp = require "rspamd_regexp"
+
+    if parts then
+      for _,p in ipairs(parts) do
+        local mtype,subtype = p:get_type()
+        local re = rspamd_regexp.create_cached('/(office|word|excel)/i')
+        if re:match(subtype) then
+          local content = tostring(p:get_content())
+          local filename = p:get_filename()
+
+          local file = os.tmpname()
+          f = io.open(file, "a+")
+          f:write(content)
+          f:close()
+
+          local scan = assert(io.popen('PATH=/usr/bin:/usr/local/bin mraptor ' .. file .. '> /dev/null 2>&1; echo $?', 'r'))
+          local result = scan:read('*all')
+          local exit_code = string.match(result, "%d+")
+          rspamd_logger.infox(exit_code)
+          scan:close()
+
+          if exit_code == "20" then
+            rspamd_logger.infox("Reject dangerous macro in office file " .. filename)
+            task:set_pre_result(rspamd_actions['reject'], 'Dangerous macro in office file ' .. filename)
+          end
+
+        end
+      end
+    end
   end
 }
