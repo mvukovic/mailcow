@@ -8,9 +8,10 @@ services:
           condition: service_healthy
       volumes:
         - ./data/conf/pdns/:/etc/powerdns/
+      hostname: pdns
       restart: always
       networks:
-        mailcow-network:
+        sslserver-network:
           ipv4_address: 172.22.1.254
           aliases:
             - pdns
@@ -22,12 +23,13 @@ services:
         interval: 10s
         timeout: 30s
         retries: 5
+      hostname: sequel
       volumes:
         - mysql-vol-1:/var/lib/mysql/
         - ./data/conf/mysql/:/etc/mysql/conf.d/:ro
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       environment:
         - MYSQL_ROOT_PASSWORD=${DBROOT}
         - MYSQL_DATABASE=${DBNAME}
@@ -35,7 +37,7 @@ services:
         - MYSQL_PASSWORD=${DBPASS}
       restart: always
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - mysql
 
@@ -45,12 +47,13 @@ services:
         - pdns-mailcow
       volumes:
         - redis-vol-1:/data/
+      hostname: redis
       restart: always
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - redis
 
@@ -58,6 +61,7 @@ services:
       image: andryyy/mailcow-dockerized:rspamd
       depends_on:
         - nginx-mailcow
+      hostname: rspamd
       volumes:
         - ./data/conf/rspamd/override.d/:/etc/rspamd/override.d:ro
         - ./data/conf/rspamd/local.d/:/etc/rspamd/local.d:ro
@@ -67,9 +71,9 @@ services:
       restart: always
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       networks:
-        mailcow-network:
+        sslserver-network:
           ipv4_address: 172.22.1.253
           aliases:
             - rspamd
@@ -79,13 +83,14 @@ services:
       command: "php-fpm -d date.timezone=${TZ}"
       depends_on:
         - pdns-mailcow
+      hostname: php
       volumes:
         - ./data/web:/web:ro
         - ./data/conf/rspamd/dynmaps:/dynmaps:ro
         - dkim-vol-1:/data/dkim
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       environment:
         - DBNAME=${DBNAME}
         - DBUSER=${DBUSER}
@@ -93,7 +98,7 @@ services:
         - MAILCOW_HOSTNAME=${MAILCOW_HOSTNAME}
       restart: always
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - phpfpm
 
@@ -108,13 +113,14 @@ services:
         - TZ=${TZ}
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      hostname: sogo
+      dns_search: sslserver-network
       volumes:
         - ./data/conf/sogo/:/etc/sogo/
         - /usr/lib/GNUstep/SOGo/WebServerResources/
       restart: always
       networks:
-        mailcow-network:
+        sslserver-network:
           ipv4_address: 172.22.1.252
           aliases:
             - sogo
@@ -126,11 +132,12 @@ services:
       volumes:
         - ./data/conf/rmilter/:/etc/rmilter.conf.d/:ro
       restart: always
+      hostname: rmilter
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - rmilter
 
@@ -138,6 +145,7 @@ services:
       image: andryyy/mailcow-dockerized:dovecot
       depends_on:
         - pdns-mailcow
+      hostname: dovecot
       volumes:
         - ./data/conf/dovecot:/etc/dovecot
         - ./data/assets/ssl:/etc/ssl/mail/:ro
@@ -155,11 +163,11 @@ services:
         - "${SIEVE_PORT:-4190}:4190"
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       restart: always
       hostname: ${MAILCOW_HOSTNAME}
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - dovecot
 
@@ -167,6 +175,7 @@ services:
       image: andryyy/mailcow-dockerized:postfix
       depends_on:
         - pdns-mailcow
+      hostname: postar
       volumes:
         - ./data/conf/postfix:/opt/postfix/conf
         - ./data/assets/ssl:/etc/ssl/mail/:ro
@@ -182,9 +191,9 @@ services:
       hostname: ${MAILCOW_HOSTNAME}
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - postfix
 
@@ -195,9 +204,9 @@ services:
       restart: always
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - memcached
 
@@ -206,6 +215,7 @@ services:
         - sogo-mailcow
         - php-fpm-mailcow
       image: nginx:mainline
+      hostname: web
       command: /bin/bash -c "envsubst < /etc/nginx/conf.d/listen.template > /etc/nginx/conf.d/listen.active && nginx -g 'daemon off;'"
       environment:
         - HTTPS_PORT=${HTTPS_PORT:-443}
@@ -216,17 +226,17 @@ services:
         - ./data/conf/nginx/:/etc/nginx/conf.d/:rw
       dns:
         - 172.22.1.254
-      dns_search: mailcow-network
+      dns_search: sslserver-network
       ports:
         - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
       restart: always
       networks:
-        mailcow-network:
+        sslserver-network:
           aliases:
             - nginx
 
 networks:
-  mailcow-network:
+  sslserver-network:
     driver: bridge
     ipam:
       driver: default
